@@ -108,9 +108,16 @@ def render_memory(
     max_items: int = 3,
     max_chars: int = 240,
     header: str = "（关于这个人的记忆，供参考，别逐条复述）",
+    active: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """把记忆压成一段可以直接塞进对话的短文本；没有可用的就返回空串。"""
+    """把记忆压成一段可以直接塞进对话的短文本；没有可用的就返回空串。
+
+    active: active_hours() 的结果。样本够（≥3 天）才带一句「通常几点在线」，
+    不够就不说 —— 猜错作息比不知道更烦人。
+    """
     lines = pick_lines(rows, max_items=max_items)
+    if active and active.get("days", 0) >= 3:
+        lines.append(f"通常 {active['start']}–{active['end']} 点在线")
     if not lines:
         return ""
     body = "；".join(lines)

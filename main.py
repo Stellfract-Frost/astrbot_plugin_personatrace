@@ -162,6 +162,8 @@ class Main(star.Star):
                 rows,
                 max_items=int(self.cfg.get("inject_max_items", 3)),
                 max_chars=int(self.cfg.get("inject_max_chars", 240)),
+                # 旧版核心没有这个方法：有就用，没有就不提作息
+                active=getattr(mem, "active_hours", lambda: None)(),
             )
             if not text:
                 return                      # 冷启动：库里没东西，什么都不加

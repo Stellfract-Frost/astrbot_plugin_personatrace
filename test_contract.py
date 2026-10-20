@@ -315,6 +315,28 @@ def test_constraints_always_survive_ranking():
     assert len(lines) == 3
 
 
+def test_active_hours_only_when_enough_days():
+    """活跃时段要有 ≥3 天样本才说；不够就说不知道。"""
+    from datetime import datetime, timedelta
+
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:11")
+    noon = datetime.now().replace(hour=23, minute=10, second=0, microsecond=0)
+    for d in range(4):
+        mem.record_behavior("chat", "group", ts=(noon - timedelta(days=d)).timestamp())
+    hint = mem.active_hours()
+    assert hint and hint["days"] == 4 and hint["start"] <= 23 < hint["end"] + 24, hint
+
+    text = adapter.render_memory(mem.state() or [{"label": "x"}], active=hint)
+    assert "点在线" in text
+
+    fresh = MemoryV2(backend=MemoryBackend(), user_id="qq:12")
+    fresh.record_behavior("chat", "group")
+    assert fresh.active_hours() is None
+    assert "点在线" not in adapter.render_memory([{"label": "x"}], active=fresh.active_hours())
+
+
 def test_parse_due_only_when_certain():
     """认得出明确日期，认不出就返回 None —— 宁可漏提醒，不要提醒错的事。"""
     from datetime import datetime
@@ -377,6 +399,7 @@ if __name__ == "__main__":
         test_inject_only_once_per_turn,
         test_per_group_scope,
         test_constraints_always_survive_ranking,
+        test_active_hours_only_when_enough_days,
         test_parse_due_only_when_certain,
         test_bridge_attaches_due_date_for_goals,
     ):
