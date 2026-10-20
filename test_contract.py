@@ -301,6 +301,20 @@ def test_remember_writes_into_memory_after_reply():
     assert rows and rows[0]["label"] == "在准备四级", rows
 
 
+def test_constraints_always_survive_ranking():
+    """硬约束/边界必须入选，否则「说过不行的，不会再推荐」只是碰运气。"""
+    rows = [
+        {"label": "在准备四级", "category": "goals", "due_in": 2, "effective_confidence": 0.9, "staleness": 0.1},
+        {"label": "不接受远程办公", "category": "constraints", "due_in": None, "effective_confidence": 0.1, "staleness": 0.9},
+        {"label": "偏好深色主题", "category": "likes", "due_in": None, "effective_confidence": 0.8, "staleness": 0.1},
+        {"label": "别在早上找他", "category": "boundaries", "due_in": None, "effective_confidence": 0.1, "staleness": 0.5},
+    ]
+    lines = adapter.pick_lines(rows, 3)
+    assert any("不接受远程办公" in x for x in lines), lines
+    assert any("别在早上找他" in x for x in lines), lines
+    assert len(lines) == 3
+
+
 def test_parse_due_only_when_certain():
     """认得出明确日期，认不出就返回 None —— 宁可漏提醒，不要提醒错的事。"""
     from datetime import datetime
@@ -362,6 +376,7 @@ if __name__ == "__main__":
         test_host_llm_bridges_sync_call_to_async_provider,
         test_inject_only_once_per_turn,
         test_per_group_scope,
+        test_constraints_always_survive_ranking,
         test_parse_due_only_when_certain,
         test_bridge_attaches_due_date_for_goals,
     ):

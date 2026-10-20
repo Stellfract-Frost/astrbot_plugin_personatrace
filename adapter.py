@@ -79,9 +79,20 @@ def _rank(row: Dict[str, Any]) -> tuple:
     return (urgency, -(row.get("effective_confidence") or 0.0))
 
 
+MUST_KEEP = ("constraints", "boundaries")
+"""硬约束和边界必须出现在注入里 —— 否则「说过不行的，不会再推荐」只是碰运气。"""
+
+
 def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3) -> List[str]:
+    rows = list(rows)
+    must = [r for r in rows if r.get("category") in MUST_KEEP]
+    rest = [r for r in rows if r.get("category") not in MUST_KEEP]
+    ordered = sorted(must, key=_rank)[: max(1, max_items - 1)]
+    if len(ordered) < max_items:
+        ordered += [r for r in sorted(rest, key=_rank) if r not in ordered][: max_items - len(ordered)]
+
     items: List[str] = []
-    for row in sorted(rows, key=_rank):
+    for row in ordered:
         label = (row.get("label") or "").strip()
         if not label:
             continue
