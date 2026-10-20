@@ -204,6 +204,10 @@ class Main(star.Star):
             provider = await self.context.get_using_provider_async(event.unified_msg_origin)
             if provider is None:
                 return
+            try:        # 行为数据：什么时候来、群聊还是私聊（供后续预测用）
+                mem.record_behavior("chat", "group" if event.get_group_id() else "private")
+            except Exception:
+                pass
             self._pool.submit(self._ingest_blocking, key, user_msg, reply, provider)
         except Exception as exc:
             logger.warning(f"[personatrace] schedule ingest failed: {exc}")

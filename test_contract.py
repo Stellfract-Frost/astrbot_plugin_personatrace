@@ -301,6 +301,34 @@ def test_remember_writes_into_memory_after_reply():
     assert rows and rows[0]["label"] == "在准备四级", rows
 
 
+def test_parse_due_only_when_certain():
+    """认得出明确日期，认不出就返回 None —— 宁可漏提醒，不要提醒错的事。"""
+    from datetime import datetime
+
+    now = datetime(2026, 10, 21, 5, 55)          # 周三
+    assert adapter.parse_due("这周末模拟考", now) is not None
+    assert datetime.fromtimestamp(adapter.parse_due("明天交作业", now)).day == 22
+    assert datetime.fromtimestamp(adapter.parse_due("下周三面试", now)).day == 28
+    assert adapter.parse_due("我最近在学吉他", now) is None
+    assert adapter.parse_due("", now) is None
+
+
+def test_bridge_attaches_due_date_for_goals():
+    """写入时把「这周末」解析成截止时间，注入排序才有东西可用。"""
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    class FakeExtractor:
+        def extract_from_conversation(self, **kwargs):
+            return {"work_updates": {"goals": [{"label": "这周末模拟考", "confidence": 0.8}]},
+                    "persona_updates": {}}
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:9")
+    adapter.ExtractBridge(mem, FakeExtractor()).ingest("我这周末要模拟考", "加油")
+    row = mem.state()[0]
+    assert row["due_in"] is not None, "goals 应带截止时间"
+    assert 0 < row["due_in"] <= 8, row["due_in"]
+
+
 def test_loads_like_astrbot_does(tmp_path, monkeypatch):
     """按 AstrBot 的方式加载：__import__("data.plugins.<name>.main", fromlist=["main"])。
 
@@ -334,6 +362,8 @@ if __name__ == "__main__":
         test_host_llm_bridges_sync_call_to_async_provider,
         test_inject_only_once_per_turn,
         test_per_group_scope,
+        test_parse_due_only_when_certain,
+        test_bridge_attaches_due_date_for_goals,
     ):
         fn()
         print(f"[PASS] {fn.__name__}")

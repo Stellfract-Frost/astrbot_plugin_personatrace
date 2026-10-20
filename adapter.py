@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
 
 from personatrace.llm_client import extract_json
@@ -109,6 +109,69 @@ def render_memory(
     return text
 
 
+# ---------------------------------------------------------------- 截止时间
+
+_DAY_WORDS = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "日": 7, "天": 7,
+              "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7}
+
+
+def _at(day: datetime, hour: int = 9) -> float:
+    return day.replace(hour=hour, minute=0, second=0, microsecond=0).timestamp()
+
+
+def parse_due(text: str, now: Optional[datetime] = None) -> Optional[float]:
+    """从一句话里找出「什么时候到期」。认不出来就返回 None，绝不猜。
+
+    只做确定性的词面匹配：今天/明天/后天、周末、下周X、N 天后、X月X号、月底。
+    宁可漏（不提醒）也不要错（提醒错的事）。
+    """
+    now = now or datetime.now()
+    t = (text or "").strip()
+    if not t:
+        return None
+
+    m = re.search(r"(\d+)\s*天(?:之后|以后|后|内|之内)", t)
+    if m:
+        return _at(now + timedelta(days=int(m.group(1))))
+
+    for word, delta in (("今天", 0), ("今晚", 0), ("明天", 1), ("明晚", 1), ("后天", 2), ("大后天", 3)):
+        if word in t:
+            return _at(now + timedelta(days=delta), 20 if "晚" in word else 9)
+
+    m = re.search(r"(下|这|本)?周(?:末|星期|礼拜)?([一二三四五六日天1-7])", t)
+    if m:
+        weekday = _DAY_WORDS.get(m.group(2))
+        if weekday:
+            ahead = (weekday - 1 - now.weekday()) % 7
+            if m.group(1) == "下":
+                ahead += 7
+            elif m.group(1) in ("这", "本") and ahead == 0 and "周" in t:
+                ahead = 7 if now.hour >= 12 else 0
+            target = now + timedelta(days=ahead)
+            return _at(target)
+
+    if "周末" in t:
+        ahead = (5 - now.weekday()) % 7
+        if ahead == 0 and now.hour >= 18:
+            ahead = 7
+        return _at(now + timedelta(days=ahead))
+
+    m = re.search(r"(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]", t)
+    if m:
+        month, day = int(m.group(1)), int(m.group(2))
+        year = now.year + (1 if month < now.month else 0)
+        try:
+            return _at(now.replace(year=year, month=month, day=day))
+        except ValueError:
+            return None
+
+    if "月底" in t:
+        nxt = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+        return _at(nxt - timedelta(days=1))
+
+    return None
+
+
 # ---------------------------------------------------------------- 抽取（复用宿主模型）
 
 
@@ -184,6 +247,10 @@ class ExtractBridge:
                         label, confidence, reasoning = str(item).strip(), 0.5, ""
                     if len(label) < 2:
                         continue
+                    due = None
+                    if track == "work" and category in ("goals", "projects"):
+                        # 先看标签本身有没有日期，没有再退回用户原话（只对目标/项目做）
+                        due = parse_due(label) or parse_due(user_msg or "")
                     self.mem.observe(
                         category,
                         label,
@@ -191,6 +258,7 @@ class ExtractBridge:
                         confidence=max(0.0, min(1.0, confidence)),
                         reasoning=reasoning,
                         evidence_text=(user_msg or "")[:1000],
+                        due_at_ts=due,
                     )
                     written += 1
         return written
