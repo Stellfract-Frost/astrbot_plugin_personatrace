@@ -1,5 +1,5 @@
 name: astrbot_plugin_personatrace
-desc: 用得越久，它越像一个认识你很久的人。
+desc: 让 AstrBot 更像一个人：记得你说过的话、快到期的日子，也记得你几点上线。
 author: Stellfract-Frost
 version: 0.1.0
 repo: https://github.com/Stellfract-Frost/astrbot_plugin_personatrace
