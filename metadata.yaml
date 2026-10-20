@@ -1,5 +1,5 @@
 name: astrbot_plugin_personatrace
-desc: 不用每次重新自我介绍：它记得你叫什么、在忙什么，也会跟着你变。
+desc: 用得越久，它越像一个认识你很久的人。
 author: Stellfract-Frost
 version: 0.1.0
 repo: https://github.com/Stellfract-Frost/astrbot_plugin_personatrace
