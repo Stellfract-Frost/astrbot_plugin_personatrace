@@ -1,0 +1,2 @@
+# 尚未发布到 PyPI，直接从仓库安装：
+personatrace @ git+https://github.com/Stellfract-Frost/PersonaTrace
