@@ -1,5 +1,5 @@
 name: astrbot_plugin_personatrace
-desc: 每轮自动读写「带保质期的记忆」——她记得你现在什么状态、哪条结论快过期。
+desc: 记得你说过的事，并在快到期时提醒你——重启也不丢。
 author: Stellfract-Frost
 version: 0.1.0
 repo: https://github.com/Stellfract-Frost/astrbot_plugin_personatrace
