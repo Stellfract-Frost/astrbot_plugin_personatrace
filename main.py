@@ -297,13 +297,17 @@ class Main(star.Star):
             mem = self._mem(key)
             rows = mem.state()
             stats = mem.stats()
+            ov = getattr(mem, "overview", lambda: {"claims": 0, "directives": 0})()
+            extra = ""
+            if ov.get("claims") or ov.get("directives"):
+                extra = f"（另有 {ov.get('claims', 0)} 条转述、{ov.get('directives', 0)} 条指令）"
             if not rows:
-                yield event.plain_result(f"{key}：0 条记忆（后端 {stats.get('backend')}）")
+                yield event.plain_result(f"{key}：0 条记忆{extra}（后端 {stats.get('backend')}）")
                 return
             lines = adapter.pick_lines(rows, max_items=8)
             body = "\n".join(f"- {x}" for x in lines)
             more = f"\n……共 {len(rows)} 条" if len(rows) > len(lines) else f"\n共 {len(rows)} 条"
-            yield event.plain_result(f"{key}：\n{body}{more}\n后端 {stats.get('backend')}")
+            yield event.plain_result(f"{key}：\n{body}{more}{extra}\n后端 {stats.get('backend')}")
         except Exception as exc:
             yield event.plain_result(f"读取失败：{exc}")
 

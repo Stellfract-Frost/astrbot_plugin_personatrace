@@ -521,6 +521,62 @@ def test_directive_is_injected_for_target():
     assert "管理员交代" in text and "骂他" in text, text
 
 
+def test_directive_takes_exactly_one_slot():
+    """3 格预算里指令占 1 格，不会把信念挤没，也不会自己膨胀。"""
+    rows = [{"label": f"偏好 {i}", "category": "likes", "effective_confidence": 0.9 - i * 0.1,
+             "staleness": 0.1, "due_in": None} for i in range(4)]
+    text = adapter.render_memory(
+        rows, max_items=3,
+        directives=[{"label": "碰到他就骂他"}, {"label": "第二条指令"}],
+        claims=[{"actor": "aiocqhttp:9", "label": "很忙"}],
+    )
+    assert text.count("管理员交代") == 1, text
+    assert text.count("；") <= 3, text
+    assert "偏好 0" in text, text
+
+
+def test_memory_command_reports_mentions():
+    p = make_plugin()
+    key = adapter.identity_key("aiocqhttp", "1001")
+    mem = p._mem(key)
+    mem.observe("goals", "在准备四级", track="work")
+    mem.observe_mention("aiocqhttp:2002", "claim", "state", "别人说他很忙")
+
+    async def run(coro):
+        return [x async for x in coro]
+
+    out = asyncio.run(run(p.show_memory(FakeEvent("1001", f"/memory {key}"))))
+    assert "另有 1 条转述" in out[0], out[0]
+
+
+def test_directive_takes_exactly_one_slot():
+    """3 格预算里指令占 1 格，不会把信念挤没，也不会自己膨胀。"""
+    rows = [{"label": f"偏好 {i}", "category": "likes", "effective_confidence": 0.9 - i * 0.1,
+             "staleness": 0.1, "due_in": None} for i in range(4)]
+    text = adapter.render_memory(
+        rows, max_items=3,
+        directives=[{"label": "碰到他就骂他"}, {"label": "第二条指令"}],
+        claims=[{"actor": "aiocqhttp:9", "label": "很忙"}],
+    )
+    assert text.count("管理员交代") == 1, text
+    assert text.count("；") <= 3, text
+    assert "偏好 0" in text, text
+
+
+def test_memory_command_reports_mentions():
+    p = make_plugin()
+    key = adapter.identity_key("aiocqhttp", "1001")
+    mem = p._mem(key)
+    mem.observe("goals", "在准备四级", track="work")
+    mem.observe_mention("aiocqhttp:2002", "claim", "state", "别人说他很忙")
+
+    async def run(coro):
+        return [x async for x in coro]
+
+    out = asyncio.run(run(p.show_memory(FakeEvent("1001", f"/memory {key}"))))
+    assert "另有 1 条转述" in out[0], out[0]
+
+
 def test_hearsay_and_self_claim_are_marked():
     """别人说的标成「别人说的」，自称标成「自称」，都不能当事实。"""
     p = make_plugin()
@@ -574,6 +630,10 @@ if __name__ == "__main__":
         test_admin_directive_goes_to_the_target_not_the_admin,
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
+        test_directive_takes_exactly_one_slot,
+        test_memory_command_reports_mentions,
+        test_directive_takes_exactly_one_slot,
+        test_memory_command_reports_mentions,
         test_hearsay_and_self_claim_are_marked,
         test_consolidate_update_replaces_old_belief,
         test_consolidate_rejects_made_up_id,
@@ -581,6 +641,10 @@ if __name__ == "__main__":
         test_admin_directive_goes_to_the_target_not_the_admin,
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
+        test_directive_takes_exactly_one_slot,
+        test_memory_command_reports_mentions,
+        test_directive_takes_exactly_one_slot,
+        test_memory_command_reports_mentions,
         test_hearsay_and_self_claim_are_marked,
         test_consolidate_update_replaces_old_belief,
         test_consolidate_rejects_made_up_id,

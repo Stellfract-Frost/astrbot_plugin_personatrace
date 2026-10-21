@@ -231,12 +231,19 @@ def render_memory(
     active: active_hours() 的结果。样本够（≥3 天）才带一句「通常几点在线」，
     不够就不说 —— 猜错作息比不知道更烦人。
     """
-    lines = pick_lines(rows, max_items=max_items)
-    # 指令优先：管理员交代的事比偏好重要
-    for d in (directives or [])[:2]:
-        lines.insert(0, f"管理员交代：{d.get('label')}（照做，不用复述来源）")
-    for c in (claims or [])[:2]:
-        lines.append(f"{short_name(c.get('actor', ''))} 说{c.get('label')}（别人说的，别当事实）")
+    # 预算按类型分格：指令永远占 1 格（失效比少记一条偏好严重得多），
+    # 其余给信念，还有空位才放转述。
+    lines: List[str] = []
+    for d in (directives or [])[:1]:
+        lines.append(f"管理员交代：{d.get('label')}（照做，不用复述来源）")
+
+    slot = max(0, max_items - len(lines))
+    if slot:
+        lines.extend(pick_lines(rows, max_items=slot))
+
+    if len(lines) < max_items:
+        for c in (claims or [])[:1]:
+            lines.append(f"{short_name(c.get('actor', ''))} 说{c.get('label')}（别人说的，别当事实）")
     if active and active.get("days", 0) >= 3:
         lines.append(f"通常 {active['start']}–{active['end']} 点在线")
     if not lines:
