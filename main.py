@@ -204,25 +204,34 @@ class Main(star.Star):
     def _ingest_blocking(self, key: str, user_msg: str, reply: str, provider: Any = None) -> None:
         """线程池里跑：同步抽取 + 写 MemoryV2。所有异常就地吞掉。"""
         try:
+            if provider is None or self._loop is None:
+                return
             mem = self._mem(key)
+            llm = adapter.HostLLM(provider, self._loop)
             with self._lock:
                 cached = self._extractors.get(key)
             if cached is not None and cached[0] is provider:
                 extractor = cached[1]
             else:
-                if provider is None or self._loop is None:
-                    return
                 from personatrace.config import PersonaConfig
                 from personatrace.extractor import PersonaExtractor
 
-                llm = adapter.HostLLM(provider, self._loop)
                 extractor = PersonaExtractor(PersonaConfig(), llm)
                 with self._lock:
                     self._extractors[key] = (provider, extractor)
+
             bridge = adapter.ExtractBridge(mem, extractor, max_per_turn=int(self.cfg.get("max_per_turn", 8)))
             written = bridge.ingest(user_msg, reply)
+
+            # 有新信息才值得跑一次整理（判断有没有推翻旧结论）
+            changed = {"updated": 0, "deleted": 0}
             if written:
-                logger.info(f"[personatrace] {key}: +{written}")
+                changed = adapter.Consolidator(mem, llm).run(user_msg, reply)
+            if written or changed["updated"] or changed["deleted"]:
+                logger.info(
+                    f"[personatrace] {key}: +{written} new, "
+                    f"~{changed['updated']} updated, -{changed['deleted']} invalidated"
+                )
         except Exception as exc:
             logger.warning(f"[personatrace] ingest failed for {key}: {exc}")
 

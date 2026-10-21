@@ -319,6 +319,118 @@ def test_constraints_always_survive_ranking():
     assert len(lines) == 3
 
 
+def test_consolidate_update_replaces_old_belief():
+    """「我换到字节了」→ 旧结论失效、新结论生效，不并存。"""
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    class FakeLLM:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return self.payload
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:21")
+    mem.observe("projects", "在腾讯做后端", track="work", confidence=0.8)
+    short = mem.state()[0]["id"][:8]
+    llm = FakeLLM({"update": [{"id": short, "label": "在字节做后端", "reason": "用户说换了"}]})
+
+    res = adapter.Consolidator(mem, llm).run("我换到字节了", "恭喜")
+    assert res == {"updated": 1, "deleted": 0}, res
+
+    active = [r["label"] for r in mem.state()]
+    assert active == ["在字节做后端"], active
+    assert len(mem.state(include_invalidated=True)) == 2, "旧结论应保留为已失效"
+
+
+def test_consolidate_rejects_made_up_id():
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    class FakeLLM:
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return {"update": [{"id": "deadbeef", "label": "编的"}],
+                    "delete": [{"id": "deadbeef"}]}
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:22")
+    mem.observe("goals", "在准备四级", track="work")
+    res = adapter.Consolidator(mem, FakeLLM()).run("随便说点什么", "嗯")
+    assert res == {"updated": 0, "deleted": 0}, res
+    assert [r["label"] for r in mem.state()] == ["在准备四级"]
+
+
+def test_consolidate_delete_and_cap():
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:23")
+    for i in range(8):
+        mem.observe("goals", f"目标 {i}", track="work", confidence=0.8)
+    shorts = [r["id"][:8] for r in mem.state()]
+
+    class FakeLLM:
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return {"delete": [{"id": s} for s in shorts]}      # 8 条，超上限
+
+    res = adapter.Consolidator(mem, FakeLLM()).run("这些都不做了", "好")
+    assert res["deleted"] == 5, res                        # max_ops 生效
+    assert len(mem.state()) == 3, len(mem.state())
+
+
+def test_consolidate_update_replaces_old_belief():
+    """「我换到字节了」→ 旧结论失效、新结论生效，不并存。"""
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    class FakeLLM:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return self.payload
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:21")
+    mem.observe("projects", "在腾讯做后端", track="work", confidence=0.8)
+    short = mem.state()[0]["id"][:8]
+    llm = FakeLLM({"update": [{"id": short, "label": "在字节做后端", "reason": "用户说换了"}]})
+
+    res = adapter.Consolidator(mem, llm).run("我换到字节了", "恭喜")
+    assert res == {"updated": 1, "deleted": 0}, res
+
+    active = [r["label"] for r in mem.state()]
+    assert active == ["在字节做后端"], active
+    assert len(mem.state(include_invalidated=True)) == 2, "旧结论应保留为已失效"
+
+
+def test_consolidate_rejects_made_up_id():
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    class FakeLLM:
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return {"update": [{"id": "deadbeef", "label": "编的"}],
+                    "delete": [{"id": "deadbeef"}]}
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:22")
+    mem.observe("goals", "在准备四级", track="work")
+    res = adapter.Consolidator(mem, FakeLLM()).run("随便说点什么", "嗯")
+    assert res == {"updated": 0, "deleted": 0}, res
+    assert [r["label"] for r in mem.state()] == ["在准备四级"]
+
+
+def test_consolidate_delete_and_cap():
+    from personatrace.memory_v2 import MemoryBackend, MemoryV2
+
+    mem = MemoryV2(backend=MemoryBackend(), user_id="qq:23")
+    for i in range(8):
+        mem.observe("goals", f"目标 {i}", track="work", confidence=0.8)
+    shorts = [r["id"][:8] for r in mem.state()]
+
+    class FakeLLM:
+        def chat_json(self, messages, max_tokens=8192, model=None):
+            return {"delete": [{"id": s} for s in shorts]}      # 8 条，超上限
+
+    res = adapter.Consolidator(mem, FakeLLM()).run("这些都不做了", "好")
+    assert res["deleted"] == 5, res                        # max_ops 生效
+    assert len(mem.state()) == 3, len(mem.state())
+
+
 def test_active_hours_only_when_enough_days():
     """活跃时段要有 ≥3 天样本才说；不够就说不知道。"""
     from datetime import datetime, timedelta
@@ -403,6 +515,12 @@ if __name__ == "__main__":
         test_inject_only_once_per_turn,
         test_per_group_scope,
         test_constraints_always_survive_ranking,
+        test_consolidate_update_replaces_old_belief,
+        test_consolidate_rejects_made_up_id,
+        test_consolidate_delete_and_cap,
+        test_consolidate_update_replaces_old_belief,
+        test_consolidate_rejects_made_up_id,
+        test_consolidate_delete_and_cap,
         test_active_hours_only_when_enough_days,
         test_parse_due_only_when_certain,
         test_bridge_attaches_due_date_for_goals,

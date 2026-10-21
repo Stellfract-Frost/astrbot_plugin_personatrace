@@ -53,6 +53,97 @@ def normalize_key(raw: str) -> str:
     return key
 
 
+# ---------------------------------------------------------------- 整理（改 / 删）
+
+CONSOLIDATE_PROMPT = """你在维护一份关于某个人的记忆清单。判断这轮对话是否**推翻了**其中某条。
+
+现有记忆（id | 类别 | 内容 | 上次支持距今）：
+{candidates}
+
+这轮对话：
+用户：{user}
+助手：{reply}
+
+只输出 JSON，不要解释：
+{{"update": [{{"id": "8位id", "label": "新的说法", "reason": "为什么被推翻"}}],
+  "delete": [{{"id": "8位id", "reason": "为什么不再成立"}}]}}
+
+规则：
+- id 必须来自上面的清单，**编造的会被丢弃**
+- update 只用于「同一个对象、新的说法」（换了工作/改了目标/改口了）
+- delete 只用于「做完了 / 取消了 / 明确说不再这样」
+- 只是补充新信息、没有推翻旧结论时，两个数组都留空
+- 最多 5 条 update、5 条 delete；没把握就不要改"""
+
+
+class Consolidator:
+    """让模型判断：这轮对话有没有推翻已有结论。
+
+    先给短 id（8 位）再回填校验 —— 模型复制 32 位 uuid 极易出错，
+    短 id 映射表能同时解决「编造」和「抄错」两种失败。
+    """
+
+    def __init__(self, mem: Any, llm: Any, max_candidates: int = 30, max_ops: int = 5) -> None:
+        self.mem = mem
+        self.llm = llm
+        self.max_candidates = max_candidates
+        self.max_ops = max_ops
+
+    def _candidates(self, user_msg: str):
+        rows = self.mem.state()[: self.max_candidates]
+        lines = []
+        mapping = {}
+        for row in rows:
+            short = row["id"][:8]
+            mapping[short] = row
+            stale = row.get("staleness")
+            lines.append(
+                f"- {short} | {row.get('category')} | {row.get('label')}"
+                + (f" | {stale:.1f}" if isinstance(stale, (int, float)) else "")
+            )
+        return "\n".join(lines), mapping
+
+    def run(self, user_msg: str, reply: str) -> Dict[str, int]:
+        candidates, mapping = self._candidates(user_msg)
+        if not mapping:
+            return {"updated": 0, "deleted": 0}
+
+        prompt = CONSOLIDATE_PROMPT.format(
+            candidates=candidates, user=user_msg[:1500], reply=(reply or "")[:600]
+        )
+        data = self.llm.chat_json([{"role": "user", "content": prompt}]) or {}
+
+        updated = deleted = 0
+        for op in (data.get("update") or [])[: self.max_ops]:
+            if not isinstance(op, dict):
+                continue
+            row = mapping.get(str(op.get("id", "")).strip())
+            label = str(op.get("label") or "").strip()
+            if not row or len(label) < 2 or label == row.get("label"):
+                continue                      # 编造 id / 空标签 / 没变化：一律丢弃
+            self.mem.observe(
+                row["category"],
+                label,
+                track=row.get("track", "work"),
+                confidence=float(row.get("confidence") or 0.6),
+                reasoning=f"consolidate: {op.get('reason', '')}"[:200],
+                evidence_text=user_msg[:1000],
+            )
+            self.mem.invalidate(row["id"])
+            updated += 1
+
+        for op in (data.get("delete") or [])[: self.max_ops]:
+            if not isinstance(op, dict):
+                continue
+            row = mapping.get(str(op.get("id", "")).strip())
+            if not row:
+                continue
+            self.mem.invalidate(row["id"], status="superseded")
+            deleted += 1
+
+        return {"updated": updated, "deleted": deleted}
+
+
 # ---------------------------------------------------------------- 渲染
 
 
