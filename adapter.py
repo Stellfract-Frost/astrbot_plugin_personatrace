@@ -221,6 +221,22 @@ def text_similarity(a: str, b: str) -> float:
 
 
 MUST_KEEP = ("constraints", "boundaries")
+
+# 方括号里的用途，决定模型怎么用它 —— 比只给一句话有用得多
+CATEGORY_TAG = {
+    "constraints": "约束", "boundaries": "边界", "goals": "目标", "projects": "在做",
+    "likes": "偏好", "dislikes": "不喜欢", "identity": "自称", "explicit_facts": "自称",
+    "state": "近况", "expertise": "擅长", "traits": "性格", "interests": "兴趣",
+    "style_notes": "说话风格", "decision_style": "决策风格", "interpersonal": "人际",
+}
+
+# 方括号里的用途，决定模型怎么用它 —— 比只给一句话有用得多
+CATEGORY_TAG = {
+    "constraints": "约束", "boundaries": "边界", "goals": "目标", "projects": "在做",
+    "likes": "偏好", "dislikes": "不喜欢", "identity": "自称", "explicit_facts": "自称",
+    "state": "近况", "expertise": "擅长", "traits": "性格", "interests": "兴趣",
+    "style_notes": "说话风格", "decision_style": "决策风格", "interpersonal": "人际",
+}
 """硬约束和边界必须出现在注入里 —— 否则「说过不行的，不会再推荐」只是碰运气。"""
 
 
@@ -247,10 +263,10 @@ def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3,
         label = (row.get("label") or "").strip()
         if not label:
             continue
-        if row.get("category") in ("identity", "explicit_facts"):
-            label = f"自称{label}"          # 未经核实的身份宣称，不当作事实
+        tag = CATEGORY_TAG.get(row.get("category", ""), "")
         suffix = "，".join(x for x in (_due_text(row.get("due_in")), _staleness_text(row.get("staleness"))) if x)
-        items.append(f"{label}（{suffix}）" if suffix else label)
+        body = f"{label}（{suffix}）" if suffix else label
+        items.append(f"[{tag}] {body}" if tag else body)
         if len(items) >= max_items:
             break
     return items
@@ -260,7 +276,7 @@ def render_memory(
     rows: Iterable[Dict[str, Any]],
     max_items: int = 3,
     max_chars: int = 240,
-    header: str = "（关于这个人的记忆，供参考，别逐条复述）",
+    header: str = "（这个人的记忆，方括号是用途：约束必须遵守，目标可主动关心，别逐条复述）",
     active: Optional[Dict[str, Any]] = None,
     directives: Optional[List[Dict[str, Any]]] = None,
     claims: Optional[List[Dict[str, Any]]] = None,
@@ -292,9 +308,11 @@ def render_memory(
         return ""
     body = "；".join(lines)
     text = f"{header}{body}"
-    if len(text) > max_chars:
-        text = text[: max_chars - 1] + "…"
-    return text
+    while len(text) > max_chars and len(lines) > 1:
+        lines.pop()                        # 宁可少一条，不要半条
+        body = "；".join(lines)
+        text = f"{header}{body}"
+    return text[:max_chars]
 
 
 # ---------------------------------------------------------------- 截止时间
