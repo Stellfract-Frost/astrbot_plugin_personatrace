@@ -15,7 +15,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
-from astrbot.api import star
+from astrbot.api import logger, star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.provider import LLMResponse, ProviderRequest
 
@@ -39,18 +39,8 @@ except Exception:  # pragma: no cover - 取决于宿主版本
         return {"type": "text", "text": text}
 
 
-try:
-    from astrbot.core import logger
-except Exception:  # pragma: no cover
-    import logging
-
-    logger = logging.getLogger("personatrace")
-
-
 PLUGIN_NAME = "astrbot_plugin_personatrace"
-_INSTALL_HINT = (
-    "记忆后端未安装：pip install \"personatrace @ git+https://github.com/Stellfract-Frost/PersonaTrace\""
-)
+_INSTALL_HINT = '记忆后端未安装：pip install "personatrace>=1.2.0"'
 
 DEFAULTS: Dict[str, Any] = {
     "enabled": True,
@@ -79,14 +69,10 @@ class Main(star.Star):
     # ------------------------------------------------------------ 基础设施
 
     def _resolve_data_dir(self):
-        try:
-            from astrbot.core.star.star_tools import StarTools
+        """插件数据目录。不留 cwd 回退 —— 记忆库必须落在 AstrBot 管理的目录里。"""
+        from astrbot.core.star.star_tools import StarTools
 
-            return StarTools.get_data_dir(PLUGIN_NAME)
-        except Exception:
-            import pathlib
-
-            return pathlib.Path.cwd() / "data"
+        return StarTools.get_data_dir(PLUGIN_NAME)
 
     def _shared_backend(self):
         """后端只建一次：SQLite 落在 AstrBot 的插件数据目录，重启不丢。"""

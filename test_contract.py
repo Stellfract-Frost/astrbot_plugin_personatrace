@@ -67,7 +67,11 @@ def _install_fake_astrbot() -> None:
 
     api_provider.LLMResponse = LLMResponse
     api_provider.ProviderRequest = ProviderRequest
-    core.logger = types.SimpleNamespace(info=lambda *a, **k: None, warning=lambda *a, **k: None)
+    api.logger = types.SimpleNamespace(
+        info=lambda *a, **k: None,
+        warning=lambda *a, **k: None,
+        error=lambda *a, **k: None,
+    )
 
     core_star_tools.StarTools = types.SimpleNamespace(get_data_dir=lambda name=None: HERE / "_data")
 
