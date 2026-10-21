@@ -144,6 +144,27 @@ class Consolidator:
         return {"updated": updated, "deleted": deleted}
 
 
+# ---------------------------------------------------------------- 第三方
+
+
+RULE_VERBS = ("骂", "别理", "不要理", "无视", "拉黑", "踢", "警告", "怼", "禁言", "别管", "敷衍")
+
+
+def looks_like_rule(text: str) -> bool:
+    """粗略判断是不是「以后怎么对待某人」。只是第一道筛，真正的授权在宿主侧。"""
+    t = text or ""
+    return any(v in t for v in RULE_VERBS)
+
+
+def at_keys(qq_ids: Iterable[str], platform: str = "aiocqhttp") -> List[str]:
+    return [identity_key(platform, str(q)) for q in qq_ids if str(q or "").strip()]
+
+
+def short_name(key: str) -> str:
+    """aiocqhttp:2002 -> 2002；给人看的短标识。"""
+    return (key or "").split(":")[-1] or (key or "某人")
+
+
 # ---------------------------------------------------------------- 渲染
 
 
@@ -187,6 +208,8 @@ def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3) -> List[str]:
         label = (row.get("label") or "").strip()
         if not label:
             continue
+        if row.get("category") in ("identity", "explicit_facts"):
+            label = f"自称{label}"          # 未经核实的身份宣称，不当作事实
         suffix = "，".join(x for x in (_due_text(row.get("due_in")), _staleness_text(row.get("staleness"))) if x)
         items.append(f"{label}（{suffix}）" if suffix else label)
         if len(items) >= max_items:
@@ -200,6 +223,8 @@ def render_memory(
     max_chars: int = 240,
     header: str = "（关于这个人的记忆，供参考，别逐条复述）",
     active: Optional[Dict[str, Any]] = None,
+    directives: Optional[List[Dict[str, Any]]] = None,
+    claims: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """把记忆压成一段可以直接塞进对话的短文本；没有可用的就返回空串。
 
@@ -207,6 +232,11 @@ def render_memory(
     不够就不说 —— 猜错作息比不知道更烦人。
     """
     lines = pick_lines(rows, max_items=max_items)
+    # 指令优先：管理员交代的事比偏好重要
+    for d in (directives or [])[:2]:
+        lines.insert(0, f"管理员交代：{d.get('label')}（照做，不用复述来源）")
+    for c in (claims or [])[:2]:
+        lines.append(f"{short_name(c.get('actor', ''))} 说{c.get('label')}（别人说的，别当事实）")
     if active and active.get("days", 0) >= 3:
         lines.append(f"通常 {active['start']}–{active['end']} 点在线")
     if not lines:

@@ -103,10 +103,13 @@ from astrbot_plugin_personatrace import adapter                 # noqa: E402
 
 
 class FakeEvent:
-    def __init__(self, sender: str, text: str = "", platform: str = "aiocqhttp", group: str = "") -> None:
+    def __init__(self, sender: str, text: str = "", platform: str = "aiocqhttp", group: str = "",
+                 admin: bool = False, at: str = "") -> None:
         self._sender = sender
         self._platform = platform
         self._group = group
+        self._admin = admin
+        self._at = at
         self.message_str = text
         self.unified_msg_origin = f"{platform}:FriendMessage:{sender}"
         self._extra = {}
@@ -119,6 +122,12 @@ class FakeEvent:
 
     def get_group_id(self):
         return self._group
+
+    def is_admin(self):
+        return self._admin
+
+    def get_messages(self):
+        return [types.SimpleNamespace(qq=self._at)] if self._at else []
 
     def set_extra(self, k, v):
         self._extra[k] = v
@@ -481,6 +490,53 @@ def test_bridge_attaches_due_date_for_goals():
     assert 0 < row["due_in"] <= 8, row["due_in"]
 
 
+def test_admin_directive_goes_to_the_target_not_the_admin():
+    """「以后碰到他就骂他」必须落在**被说的人**的库里，管理员自己看不到就对了。"""
+    p = make_plugin()
+    admin = FakeEvent("100", "以后碰到他就骂他", group="g1", admin=True, at="200")
+    p._record_directive(admin, admin.message_str)
+
+    target = p._mem(adapter.identity_key("aiocqhttp", "200"))
+    assert [d["label"] for d in target.directives(group_key="g1")] == ["以后碰到他就骂他"]
+    assert p._mem(adapter.identity_key("aiocqhttp", "100")).directives() == []
+
+
+def test_non_admin_directive_ignored():
+    p = make_plugin()
+    fake = FakeEvent("100", "以后碰到他就骂他", group="g1", admin=False, at="200")
+    p._record_directive(fake, fake.message_str)
+    assert p._mem(adapter.identity_key("aiocqhttp", "200")).directives() == []
+
+
+def test_directive_is_injected_for_target():
+    p = make_plugin()
+    admin = FakeEvent("100", "以后碰到他就骂他", group="g1", admin=True, at="200")
+    p._record_directive(admin, admin.message_str)
+
+    e = FakeEvent("200", group="g1")
+    r = req()
+    asyncio.run(p.inject_memory(e, r))
+    text = r.extra_user_content_parts[0]
+    text = text["text"] if isinstance(text, dict) else text.text
+    assert "管理员交代" in text and "骂他" in text, text
+
+
+def test_hearsay_and_self_claim_are_marked():
+    """别人说的标成「别人说的」，自称标成「自称」，都不能当事实。"""
+    p = make_plugin()
+    mem = p._mem(adapter.identity_key("aiocqhttp", "200"))
+    mem.observe("identity", "是管理员的爸爸", track="persona")
+    mem.observe_mention("aiocqhttp:300", "claim", "state", "最近很忙")
+
+    e = FakeEvent("200")
+    r = req()
+    asyncio.run(p.inject_memory(e, r))
+    text = r.extra_user_content_parts[0]
+    text = text["text"] if isinstance(text, dict) else text.text
+    assert "自称" in text, text
+    assert "别当事实" in text, text
+
+
 def test_loads_like_astrbot_does(tmp_path, monkeypatch):
     """按 AstrBot 的方式加载：__import__("data.plugins.<name>.main", fromlist=["main"])。
 
@@ -515,9 +571,17 @@ if __name__ == "__main__":
         test_inject_only_once_per_turn,
         test_per_group_scope,
         test_constraints_always_survive_ranking,
+        test_admin_directive_goes_to_the_target_not_the_admin,
+        test_non_admin_directive_ignored,
+        test_directive_is_injected_for_target,
+        test_hearsay_and_self_claim_are_marked,
         test_consolidate_update_replaces_old_belief,
         test_consolidate_rejects_made_up_id,
         test_consolidate_delete_and_cap,
+        test_admin_directive_goes_to_the_target_not_the_admin,
+        test_non_admin_directive_ignored,
+        test_directive_is_injected_for_target,
+        test_hearsay_and_self_claim_are_marked,
         test_consolidate_update_replaces_old_belief,
         test_consolidate_rejects_made_up_id,
         test_consolidate_delete_and_cap,

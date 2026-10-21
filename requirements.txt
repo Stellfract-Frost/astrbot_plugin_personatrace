@@ -1,1 +1,1 @@
-personatrace>=1.2.0
+personatrace>=1.3.0

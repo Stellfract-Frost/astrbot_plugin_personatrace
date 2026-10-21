@@ -145,12 +145,17 @@ class Main(star.Star):
             self._loop = asyncio.get_running_loop()
             mem = self._mem(self._identity(event))
             rows = mem.state()
+            group = str(getattr(event, "get_group_id", lambda: "")() or "")
+            # 旧版核心没有 mention 能力：一律 getattr 兜底
+            mentions = getattr(mem, "mentions", lambda **kw: [])(limit=8, group_key=group)
             text = adapter.render_memory(
                 rows,
                 max_items=int(self.cfg.get("inject_max_items", 3)),
                 max_chars=int(self.cfg.get("inject_max_chars", 240)),
                 # 旧版核心没有这个方法：有就用，没有就不提作息
                 active=getattr(mem, "active_hours", lambda: None)(),
+                directives=[m for m in mentions if m.get("kind") == "directive"],
+                claims=[m for m in mentions if m.get("kind") == "claim"],
             )
             if not text:
                 return                      # 冷启动：库里没东西，什么都不加
@@ -181,6 +186,8 @@ class Main(star.Star):
             user_msg = str(getattr(event, "message_str", "") or "").strip()
             if not user_msg:
                 return
+            self._record_directive(event, user_msg)   # 管理员指令走单独通道
+
             if user_msg.startswith(("/", "／")):     # 命令不记
                 return
             key = self._identity(event)
@@ -200,6 +207,42 @@ class Main(star.Star):
             self._pool.submit(self._ingest_blocking, key, user_msg, reply, provider)
         except Exception as exc:
             logger.warning(f"[personatrace] schedule ingest failed: {exc}")
+
+    @staticmethod
+    def _at_targets(event: AstrMessageEvent):
+        """消息里 @ 到的 QQ 号。用鸭子类型取 .qq，不绑定具体平台的组件类。"""
+        out = []
+        try:
+            for seg in event.get_messages():
+                qq = getattr(seg, "qq", None)
+                if qq:
+                    out.append(str(qq))
+        except Exception:
+            pass
+        return out
+
+    def _record_directive(self, event: AstrMessageEvent, text: str) -> None:
+        """管理员说「以后碰到某人怎么怎么样」——这条要存到**被说的那个人**名下。"""
+        targets = self._at_targets(event)
+        if not targets or not adapter.looks_like_rule(text):
+            return
+        if not event.is_admin():
+            return
+        actor = self._identity(event)
+        group = str(event.get_group_id() or "")
+        for key in adapter.at_keys(targets):
+            try:
+                self._mem(key).observe_mention(
+                    actor=actor,
+                    kind="directive",
+                    category="constraints",
+                    label=text[:80],
+                    confidence=0.8,
+                    evidence_text=text[:300],
+                    group_key=group,
+                )
+            except Exception as exc:
+                logger.warning(f"[personatrace] directive failed for {key}: {exc}")
 
     def _ingest_blocking(self, key: str, user_msg: str, reply: str, provider: Any = None) -> None:
         """线程池里跑：同步抽取 + 写 MemoryV2。所有异常就地吞掉。"""
