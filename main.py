@@ -15,7 +15,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
-from astrbot.api import logger, star
+from astrbot.api import logger
+from astrbot.api import star
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.provider import LLMResponse, ProviderRequest
 
