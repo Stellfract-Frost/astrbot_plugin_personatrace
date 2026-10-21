@@ -191,17 +191,56 @@ def _rank(row: Dict[str, Any]) -> tuple:
     return (urgency, -(row.get("effective_confidence") or 0.0))
 
 
+_PUNCT = "，。！？、；：「」『』（）()[]【】,.!?;: \t\n"
+_STOP = "的了是我你他她它吗呢吧啊呀哦嘛最近现在今天明天昨天这那有没些怎么"
+
+
+def _norm(text: str) -> str:
+    return "".join(
+        ch for ch in (text or "").lower() if ch not in _PUNCT and ch not in _STOP
+    ).strip()
+
+
+def text_similarity(a: str, b: str) -> float:
+    """字符 bigram 的 Jaccard，纯标准库。
+
+    不做语义，只处理「字面上明显相关」：问「吉他练得怎么样」要能命中「在学吉他」。
+    语义级的同义（备考/准备考试）留给后续，不在这里猜。
+    """
+    a, b = _norm(a), _norm(b)
+    if not a or not b:
+        return 0.0
+    if a in b or b in a:
+        return 0.9
+    ga = {a[i:i + 2] for i in range(len(a) - 1)} or {a}
+    gb = {b[i:i + 2] for i in range(len(b) - 1)} or {b}
+    bigram = len(ga & gb) / max(1, len(ga | gb))
+    # 中文标签很短，bigram 容易全空；字符重合度更宽容，权重压低一点防误命中
+    uni = len(set(a) & set(b)) / max(1, min(len(set(a)), len(set(b))))
+    return max(bigram, uni * 0.8)
+
+
 MUST_KEEP = ("constraints", "boundaries")
 """硬约束和边界必须出现在注入里 —— 否则「说过不行的，不会再推荐」只是碰运气。"""
 
 
-def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3) -> List[str]:
+def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3,
+               query: str = "") -> List[str]:
     rows = list(rows)
+    # 硬约束留 1 格保底，剩下按「和这轮话题有多相关」排。
+    # 不看话题的话，问什么都只会注入同样三条（实测过）。
+    def rel(row) -> float:
+        return text_similarity(query, row.get("label", "")) if query else 0.0
+
     must = [r for r in rows if r.get("category") in MUST_KEEP]
     rest = [r for r in rows if r.get("category") not in MUST_KEEP]
-    ordered = sorted(must, key=_rank)[: max(1, max_items - 1)]
+    ordered = sorted(must, key=_rank)[: max(1, max_items - 1)] if must else []
     if len(ordered) < max_items:
-        ordered += [r for r in sorted(rest, key=_rank) if r not in ordered][: max_items - len(ordered)]
+        ranked = sorted(rest, key=lambda r: (rel(r),) + tuple(-x for x in _rank(r)))[::-1]
+        if query:
+            # 有明确相关的就只放相关的；没有就退回按紧迫度排（别硬凑无关条目）
+            ranked = [r for r in ranked if rel(r) >= 0.12] or sorted(rest, key=_rank)
+        ordered += ranked[: max_items - len(ordered)]
 
     items: List[str] = []
     for row in ordered:
@@ -225,6 +264,7 @@ def render_memory(
     active: Optional[Dict[str, Any]] = None,
     directives: Optional[List[Dict[str, Any]]] = None,
     claims: Optional[List[Dict[str, Any]]] = None,
+    query: str = "",
 ) -> str:
     """把记忆压成一段可以直接塞进对话的短文本；没有可用的就返回空串。
 
@@ -239,10 +279,12 @@ def render_memory(
 
     slot = max(0, max_items - len(lines))
     if slot:
-        lines.extend(pick_lines(rows, max_items=slot))
+        lines.extend(pick_lines(rows, max_items=slot, query=query))
 
     if len(lines) < max_items:
-        for c in (claims or [])[:1]:
+        ranked_claims = sorted(claims or [], key=lambda c: text_similarity(query, c.get("label", "")),
+                               reverse=True)
+        for c in ranked_claims[:1]:
             lines.append(f"{short_name(c.get('actor', ''))} 说{c.get('label')}（别人说的，别当事实）")
     if active and active.get("days", 0) >= 3:
         lines.append(f"通常 {active['start']}–{active['end']} 点在线")

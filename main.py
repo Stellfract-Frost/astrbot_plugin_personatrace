@@ -154,6 +154,7 @@ class Main(star.Star):
                 max_chars=int(self.cfg.get("inject_max_chars", 240)),
                 # 旧版核心没有这个方法：有就用，没有就不提作息
                 active=getattr(mem, "active_hours", lambda: None)(),
+                query=str(getattr(event, "message_str", "") or ""),
                 directives=[m for m in mentions if m.get("kind") == "directive"],
                 claims=[m for m in mentions if m.get("kind") == "claim"],
             )

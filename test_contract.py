@@ -521,6 +521,24 @@ def test_directive_is_injected_for_target():
     assert "管理员交代" in text and "骂他" in text, text
 
 
+def test_inject_follows_the_topic():
+    """问什么就想起来什么 —— 之前不传 query，三次问不同问题拿到同样三条。"""
+    rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "在准备四级", "category": "goals", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "最近在改支付 bug", "category": "state", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "不接受远程办公", "category": "constraints", "effective_confidence": 0.3, "staleness": 0.8}]
+
+    assert "在学吉他" in adapter.pick_lines(rows, 3, query="吉他最近练得怎么样")
+    assert "在准备四级" in adapter.pick_lines(rows, 3, query="四级报名了吗")
+    assert "最近在改支付 bug" in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了")
+
+
+def test_inject_without_query_still_works():
+    """没传 query（旧调用方）不能炸，退回按紧迫度排。"""
+    rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1}]
+    assert adapter.pick_lines(rows, 3) == ["在学吉他"]
+
+
 def test_directive_takes_exactly_one_slot():
     """3 格预算里指令占 1 格，不会把信念挤没，也不会自己膨胀。"""
     rows = [{"label": f"偏好 {i}", "category": "likes", "effective_confidence": 0.9 - i * 0.1,
@@ -547,6 +565,24 @@ def test_memory_command_reports_mentions():
 
     out = asyncio.run(run(p.show_memory(FakeEvent("1001", f"/memory {key}"))))
     assert "另有 1 条转述" in out[0], out[0]
+
+
+def test_inject_follows_the_topic():
+    """问什么就想起来什么 —— 之前不传 query，三次问不同问题拿到同样三条。"""
+    rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "在准备四级", "category": "goals", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "最近在改支付 bug", "category": "state", "effective_confidence": 0.6, "staleness": 0.1},
+            {"label": "不接受远程办公", "category": "constraints", "effective_confidence": 0.3, "staleness": 0.8}]
+
+    assert "在学吉他" in adapter.pick_lines(rows, 3, query="吉他最近练得怎么样")
+    assert "在准备四级" in adapter.pick_lines(rows, 3, query="四级报名了吗")
+    assert "最近在改支付 bug" in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了")
+
+
+def test_inject_without_query_still_works():
+    """没传 query（旧调用方）不能炸，退回按紧迫度排。"""
+    rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1}]
+    assert adapter.pick_lines(rows, 3) == ["在学吉他"]
 
 
 def test_directive_takes_exactly_one_slot():
@@ -630,8 +666,12 @@ if __name__ == "__main__":
         test_admin_directive_goes_to_the_target_not_the_admin,
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
+        test_inject_follows_the_topic,
+        test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
+        test_inject_follows_the_topic,
+        test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
         test_hearsay_and_self_claim_are_marked,
@@ -641,8 +681,12 @@ if __name__ == "__main__":
         test_admin_directive_goes_to_the_target_not_the_admin,
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
+        test_inject_follows_the_topic,
+        test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
+        test_inject_follows_the_topic,
+        test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
         test_hearsay_and_self_claim_are_marked,
