@@ -300,8 +300,12 @@ class Main(star.Star):
             stats = mem.stats()
             ov = getattr(mem, "overview", lambda: {"claims": 0, "directives": 0})()
             extra = ""
+            bits = []
+            if ov.get("archived"):
+                bits.append(f"{ov['archived']} 条已归档")
             if ov.get("claims") or ov.get("directives"):
-                extra = f"（另有 {ov.get('claims', 0)} 条转述、{ov.get('directives', 0)} 条指令）"
+                bits.append(f"{ov.get('claims', 0)} 条转述、{ov.get('directives', 0)} 条指令")
+            extra = f"（另有 {'；'.join(bits)}）" if bits else ""
             if not rows:
                 yield event.plain_result(f"{key}：0 条记忆{extra}（后端 {stats.get('backend')}）")
                 return
