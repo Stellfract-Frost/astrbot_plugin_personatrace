@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, List, Optional
@@ -192,22 +193,59 @@ def _rank(row: Dict[str, Any]) -> tuple:
 
 
 _PUNCT = "，。！？、；：「」『』（）()[]【】,.!?;: \t\n"
-_STOP = "的了是我你他她它吗呢吧啊呀哦嘛最近现在今天明天昨天这那有没些怎么"
+# 单个虚词按「字」去；时间/口头语按「词」去 —— 混在一起会把「在」「近」也删掉
+_STOP_CHARS = "的了是我你他她它吗呢吧啊呀哦嘛"
+_NOISE_WORDS = ("最近", "现在", "今天", "明天", "昨天", "这几天",
+                "怎么样", "怎么", "什么", "这个", "那个", "是不是")
 
 
 def _norm(text: str) -> str:
-    return "".join(
-        ch for ch in (text or "").lower() if ch not in _PUNCT and ch not in _STOP
-    ).strip()
+    out = (text or "").lower()
+    for word in _NOISE_WORDS:
+        out = out.replace(word, "")
+    return "".join(ch for ch in out if ch not in _PUNCT and ch not in _STOP_CHARS).strip()
 
 
-def text_similarity(a: str, b: str) -> float:
-    """字符 bigram 的 Jaccard，纯标准库。
+# 同义词归一：这是唯一能解决「零共同字」的轻量手段（练琴/吉他、复习/准备）。
+# 只放高频、低歧义的口语替换；宁可少放，也别乱归并。
+SYNONYMS = {
+    "练琴": "吉他", "弹琴": "吉他", "学琴": "吉他",
+    "备考": "准备", "复习": "准备", "刷题": "准备", "预习": "准备",
+    "跳槽": "换工作", "离职": "换工作", "辞职": "换工作", "找工作": "换工作",
+    "代码": "编程", "写码": "编程", "bug": "bug", "报错": "bug", "故障": "bug",
+    "考试": "考", "面试": "面", "deadline": "截止",
+}
 
-    不做语义，只处理「字面上明显相关」：问「吉他练得怎么样」要能命中「在学吉他」。
-    语义级的同义（备考/准备考试）留给后续，不在这里猜。
+
+def canonical(text: str) -> str:
+    """按同义词表做替换（长词优先，避免「找工作」被「工作」截断）。"""
+    out = text or ""
+    for key in sorted(SYNONYMS, key=len, reverse=True):
+        if key in out:
+            out = out.replace(key, SYNONYMS[key])
+    return out
+
+
+def build_idf(labels) -> Dict[str, float]:
+    """按当前库里的标签算字符权重：到处都有的字（在/的）权重低，稀有的字（吉/他）权重高。
+
+    比硬编码停用字表更稳 —— 库变了权重自己跟着变，不用维护词表。
     """
-    a, b = _norm(a), _norm(b)
+    df: Dict[str, int] = {}
+    for lb in labels:
+        for ch in set(_norm(canonical(lb))):
+            df[ch] = df.get(ch, 0) + 1
+    n = max(1, len(labels))
+    return {ch: math.log((n + 1) / (c + 1)) + 1.0 for ch, c in df.items()}
+
+
+def text_similarity(a: str, b: str, idf: Optional[Dict[str, float]] = None) -> float:
+    """字符 bigram 的 Jaccard + 字符重合度，纯标准库。
+
+    不做语义；同义词靠 canonical() 归一，其余靠字面。有 idf 时用加权重合度，
+    让常见字少贡献分数。
+    """
+    a, b = _norm(canonical(a)), _norm(canonical(b))
     if not a or not b:
         return 0.0
     if a in b or b in a:
@@ -216,8 +254,16 @@ def text_similarity(a: str, b: str) -> float:
     gb = {b[i:i + 2] for i in range(len(b) - 1)} or {b}
     bigram = len(ga & gb) / max(1, len(ga | gb))
     # 中文标签很短，bigram 容易全空；字符重合度更宽容，权重压低一点防误命中
-    uni = len(set(a) & set(b)) / max(1, min(len(set(a)), len(set(b))))
-    return max(bigram, uni * 0.8)
+    set_a, set_b = set(a), set(b)
+    uni = len(set_a & set_b) / max(1, min(len(set_a), len(set_b)))
+    score = max(bigram, uni * 0.8)
+    if idf:
+        hit = set_a & set_b
+        if hit:
+            total = sum(idf.get(ch, 1.0) for ch in set_a) or 1.0
+            weighted = sum(idf.get(ch, 1.0) for ch in hit) / total
+            score = max(score, weighted * 0.9)
+    return score
 
 
 MUST_KEEP = ("constraints", "boundaries")
@@ -245,8 +291,10 @@ def pick_lines(rows: Iterable[Dict[str, Any]], max_items: int = 3,
     rows = list(rows)
     # 硬约束留 1 格保底，剩下按「和这轮话题有多相关」排。
     # 不看话题的话，问什么都只会注入同样三条（实测过）。
+    idf = build_idf([r.get("label", "") for r in rows])
+
     def rel(row) -> float:
-        return text_similarity(query, row.get("label", "")) if query else 0.0
+        return text_similarity(query, row.get("label", ""), idf) if query else 0.0
 
     must = [r for r in rows if r.get("category") in MUST_KEEP]
     rest = [r for r in rows if r.get("category") not in MUST_KEEP]

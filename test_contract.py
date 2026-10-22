@@ -534,6 +534,24 @@ def test_inject_follows_the_topic():
     assert any("最近在改支付 bug" in x for x in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了"))
 
 
+def test_synonyms_bridge_zero_overlap():
+    """「练琴」和「在学吉他」零共同字，只能靠同义词表。"""
+    assert adapter.text_similarity("练琴", "在学吉他") > 0.5
+    assert adapter.text_similarity("复习得怎么样", "在准备四级") > 0.2
+    assert adapter.text_similarity("跳槽的事", "想换工作") > 0.4
+    # 无关的话不能被同义词表带偏
+    assert adapter.text_similarity("今天天气不错", "在准备四级") < 0.2
+
+
+def test_idf_downweights_common_chars():
+    """到处都有的字（在/的）不该和稀有字（吉/他）一样重要。"""
+    labels = ["在准备四级", "在做驻车集", "在学吉他", "最近在改支付bug"]
+    idf = adapter.build_idf(labels)
+    assert idf["在"] < idf["吉"], "到处都有的字权重应更低"
+    assert idf["在"] < idf["驻"]
+    assert abs(idf["吉"] - idf["驻"]) < 1e-9, "同样稀有的字权重应相同"
+
+
 def test_inject_without_query_still_works():
     """没传 query（旧调用方）不能炸，退回按紧迫度排。"""
     rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1}]
@@ -552,6 +570,24 @@ def test_inject_follows_the_topic():
     assert any("在学吉他" in x for x in adapter.pick_lines(rows, 3, query="吉他最近练得怎么样"))
     assert any("在准备四级" in x for x in adapter.pick_lines(rows, 3, query="四级报名了吗"))
     assert any("最近在改支付 bug" in x for x in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了"))
+
+
+def test_synonyms_bridge_zero_overlap():
+    """「练琴」和「在学吉他」零共同字，只能靠同义词表。"""
+    assert adapter.text_similarity("练琴", "在学吉他") > 0.5
+    assert adapter.text_similarity("复习得怎么样", "在准备四级") > 0.2
+    assert adapter.text_similarity("跳槽的事", "想换工作") > 0.4
+    # 无关的话不能被同义词表带偏
+    assert adapter.text_similarity("今天天气不错", "在准备四级") < 0.2
+
+
+def test_idf_downweights_common_chars():
+    """到处都有的字（在/的）不该和稀有字（吉/他）一样重要。"""
+    labels = ["在准备四级", "在做驻车集", "在学吉他", "最近在改支付bug"]
+    idf = adapter.build_idf(labels)
+    assert idf["在"] < idf["吉"], "到处都有的字权重应更低"
+    assert idf["在"] < idf["驻"]
+    assert abs(idf["吉"] - idf["驻"]) < 1e-9, "同样稀有的字权重应相同"
 
 
 def test_inject_without_query_still_works():
@@ -602,6 +638,24 @@ def test_inject_follows_the_topic():
     assert any("最近在改支付 bug" in x for x in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了"))
 
 
+def test_synonyms_bridge_zero_overlap():
+    """「练琴」和「在学吉他」零共同字，只能靠同义词表。"""
+    assert adapter.text_similarity("练琴", "在学吉他") > 0.5
+    assert adapter.text_similarity("复习得怎么样", "在准备四级") > 0.2
+    assert adapter.text_similarity("跳槽的事", "想换工作") > 0.4
+    # 无关的话不能被同义词表带偏
+    assert adapter.text_similarity("今天天气不错", "在准备四级") < 0.2
+
+
+def test_idf_downweights_common_chars():
+    """到处都有的字（在/的）不该和稀有字（吉/他）一样重要。"""
+    labels = ["在准备四级", "在做驻车集", "在学吉他", "最近在改支付bug"]
+    idf = adapter.build_idf(labels)
+    assert idf["在"] < idf["吉"], "到处都有的字权重应更低"
+    assert idf["在"] < idf["驻"]
+    assert abs(idf["吉"] - idf["驻"]) < 1e-9, "同样稀有的字权重应相同"
+
+
 def test_inject_without_query_still_works():
     """没传 query（旧调用方）不能炸，退回按紧迫度排。"""
     rows = [{"label": "在学吉他", "category": "state", "effective_confidence": 0.6, "staleness": 0.1}]
@@ -620,6 +674,24 @@ def test_inject_follows_the_topic():
     assert any("在学吉他" in x for x in adapter.pick_lines(rows, 3, query="吉他最近练得怎么样"))
     assert any("在准备四级" in x for x in adapter.pick_lines(rows, 3, query="四级报名了吗"))
     assert any("最近在改支付 bug" in x for x in adapter.pick_lines(rows, 3, query="支付那个 bug 怎么样了"))
+
+
+def test_synonyms_bridge_zero_overlap():
+    """「练琴」和「在学吉他」零共同字，只能靠同义词表。"""
+    assert adapter.text_similarity("练琴", "在学吉他") > 0.5
+    assert adapter.text_similarity("复习得怎么样", "在准备四级") > 0.2
+    assert adapter.text_similarity("跳槽的事", "想换工作") > 0.4
+    # 无关的话不能被同义词表带偏
+    assert adapter.text_similarity("今天天气不错", "在准备四级") < 0.2
+
+
+def test_idf_downweights_common_chars():
+    """到处都有的字（在/的）不该和稀有字（吉/他）一样重要。"""
+    labels = ["在准备四级", "在做驻车集", "在学吉他", "最近在改支付bug"]
+    idf = adapter.build_idf(labels)
+    assert idf["在"] < idf["吉"], "到处都有的字权重应更低"
+    assert idf["在"] < idf["驻"]
+    assert abs(idf["吉"] - idf["驻"]) < 1e-9, "同样稀有的字权重应相同"
 
 
 def test_inject_without_query_still_works():
@@ -711,14 +783,22 @@ if __name__ == "__main__":
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
@@ -730,14 +810,22 @@ if __name__ == "__main__":
         test_non_admin_directive_ignored,
         test_directive_is_injected_for_target,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_inject_follows_the_topic,
+        test_synonyms_bridge_zero_overlap,
+        test_idf_downweights_common_chars,
         test_inject_without_query_still_works,
         test_directive_takes_exactly_one_slot,
         test_memory_command_reports_mentions,
